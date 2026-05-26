@@ -154,6 +154,24 @@ class RipleysKEstimator:
 
         return diff
 
+    def _counts_within_radii(
+        self, distances: NDArray[float], radii: NDArray[float]
+    ) -> NDArray[float]:
+        distances = np.sort(distances)
+        return np.searchsorted(distances, radii, side="left")
+
+    def _weighted_counts_within_radii(
+        self, distances: NDArray[float], weights: NDArray[float], radii: NDArray[float]
+    ) -> NDArray[float]:
+        idx_sort = np.argsort(distances)
+        distances = distances[idx_sort]
+        cumulative_weight = np.cumsum(weights[idx_sort])
+        idx = np.searchsorted(distances, radii, side="left")
+        counts = np.zeros(len(radii), dtype=cumulative_weight.dtype)
+        positive = idx > 0
+        counts[positive] = cumulative_weight[idx[positive] - 1]
+        return counts
+
     def poisson(self, radii: NDArray[float]) -> NDArray[float]:
         """
         Evaluates the Ripley K function for the homogeneous Poisson process,
@@ -263,8 +281,7 @@ class RipleysKEstimator:
         if mode == "none":
             diff = self._pairwise_diffs(data)
             distances = np.hypot(diff[:, 0], diff[:, 1])
-            for r in range(len(radii)):
-                ripley[r] = (distances < radii[r]).sum()
+            ripley = self._counts_within_radii(distances, radii)
 
             ripley = self.area * 2.0 * ripley / (npts * (npts - 1))
         # eq. 15.11 Stoyan book page 283
@@ -275,9 +292,9 @@ class RipleysKEstimator:
                 (self.y_max - self.y_min) - diff[:, 1]
             )
 
-            for r in range(len(radii)):
-                dist_indicator = distances < radii[r]
-                ripley[r] = ((1 / intersec_area) * dist_indicator).sum()
+            ripley = self._weighted_counts_within_radii(
+                distances, 1 / intersec_area, radii
+            )
 
             ripley = (self.area**2 / (npts * (npts - 1))) * 2 * ripley
         # Stoyan book page 123 and eq 15.13
@@ -311,9 +328,7 @@ class RipleysKEstimator:
                 + c3 * (b < x) * (x < math.sqrt(b**2 + 1))
             )
 
-            for r in range(len(radii)):
-                dist_indicator = distances < radii[r]
-                ripley[r] = ((1 / cov_func) * dist_indicator).sum()
+            ripley = self._weighted_counts_within_radii(distances, 1 / cov_func, radii)
 
             ripley = (self.area**2 / (npts * (npts - 1))) * 2 * ripley
         # Cressie book eq 8.2.20 page 616
@@ -373,8 +388,7 @@ class RipleysKEstimator:
 
             weight = dist_ind * w1 + ~dist_ind * w2
 
-            for r in range(len(radii)):
-                ripley[r] = ((dist < radii[r]) / weight).sum()
+            ripley = self._weighted_counts_within_radii(dist, 1 / weight, radii)
 
             ripley = self.area * 2.0 * ripley / (npts * (npts - 1))
         else:

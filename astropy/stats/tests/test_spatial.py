@@ -135,3 +135,27 @@ def test_ripley_var_width(points, low, high):
     Kest_ohser = np.mean(Kest(data=points, radii=r, mode="ohser"))
     Kest_var_width = np.mean(Kest(data=points, radii=r, mode="var-width"))
     assert_allclose(Kest_ohser, Kest_var_width, atol=1e-1, rtol=1e-1)
+
+
+def test_ripley_radii_order():
+    Kest = RipleysKEstimator(area=1, x_min=0, x_max=1, y_min=0, y_max=1)
+    points = np.array(
+        [[0.1, 0.1], [0.3, 0.2], [0.5, 0.6], [0.7, 0.8], [0.9, 0.4]]
+    )
+    radii = np.array([0.0, 0.4, 0.2, 0.8, 0.6])
+    order = np.argsort(radii)
+
+    for mode in ["none", "translation", "ohser", "ripley"]:
+        sorted_result = Kest(data=points, radii=radii[order], mode=mode)
+        result = Kest(data=points, radii=radii, mode=mode)
+        assert_allclose(result[order], sorted_result)
+
+
+def test_ripley_none_excludes_boundary():
+    Kest = RipleysKEstimator(area=1)
+    points = np.array([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]])
+    radii = np.array([1.0, np.nextafter(1.0, 2.0), 2.0, 3.0])
+    expected_pair_counts = np.array([0, 2, 2, 3])
+    expected = 2.0 * expected_pair_counts / (len(points) * (len(points) - 1))
+
+    assert_allclose(Kest(data=points, radii=radii, mode="none"), expected)
